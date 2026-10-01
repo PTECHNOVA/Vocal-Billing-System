@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vocal Billing System – Speak. Calculate. Bill.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f3f5f4;color:#14231f}
+  .card{background:#fff;border:1px solid #dbe2df;border-radius:14px}
+  .btn{min-height:44px;padding:0 16px;border-radius:10px;font-weight:600;border:1px solid #c5d0cc;background:#fff;transition:background .15s}
+  .btn:hover{background:#eef3f1}
+  .btn-primary{background:#0f6b57;color:#fff;border-color:#0f6b57}.btn-primary:hover{background:#0b5646}
+  .btn-danger{color:#a12b2b;border-color:#e3b9b9}
+  :focus-visible{outline:3px solid #f2a900;outline-offset:2px}
+  .fld{width:100%;min-height:40px;border:1px solid #c5d0cc;border-radius:8px;padding:0 8px;background:#fff}
+  .missing{border-color:#c0392b;background:#fdf1ef}
+  #voice-section,#bill-section{min-width:0}
+  .bill-table-wrap{width:100%;min-width:0;overflow:hidden;border:1px solid #d7ddda;border-radius:12px}
+  .bill-table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;text-align:left}
+  .bill-table th{padding:14px 12px;background:#f7f9f8;color:#65716d;font-size:14px;font-weight:600;border-bottom:1px solid #d7ddda;white-space:nowrap}
+  .bill-table td{min-width:0;padding:10px 8px;border-bottom:1px solid #e7ebe9;vertical-align:middle}
+  .bill-table tbody tr:last-child td{border-bottom:0}
+  .bill-table th:nth-child(1){width:21%}
+  .bill-table th:nth-child(2){width:17%}
+  .bill-table th:nth-child(3){width:16%}
+  .bill-table th:nth-child(4),.bill-table th:nth-child(5){width:11%}
+  .bill-table th:nth-child(6){width:13%}
+  .bill-table th:nth-child(7){width:11%}
+  .bill-table .fld{min-width:0;padding:0 6px}
+  .bill-table .item-input{min-width:0}
+  .bill-qty{display:flex;align-items:center;gap:5px;min-width:0}
+  .bill-qty label{flex:1;min-width:0}
+  .bill-qty .fld{text-align:center}
+  .bill-qty-input{width:50px;text-align:center;padding:0 4px}
+  .qty-btn{width:32px;min-width:32px;min-height:36px;padding:0;border-radius:8px}
+  .remove-item{min-height:36px;padding:0 2px;border:0;background:transparent;color:#a12b2b}
+  .remove-item:hover{background:transparent;text-decoration:underline}
+  .bill-row-warning td{background:#fffbeb}
+  .bill-row-warning td:first-child{border-left:3px solid #fbbf24}
+  @media(max-width:680px){
+    .bill-table,.bill-table tbody{display:block}
+    .bill-table thead{display:none}
+    .bill-table tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:8px;border-bottom:1px solid #e7ebe9}
+    .bill-table tbody tr:last-child{border-bottom:0}
+    .bill-table td{display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 4px;border:0}
+    .bill-table td::before{color:#65716d;font-size:11px;font-weight:600;white-space:nowrap}
+    .bill-table td:nth-child(1){grid-column:span 4}
+    .bill-table td:nth-child(1)::before{content:"Item"}
+    .bill-table td:nth-child(n+2){grid-column:span 2}
+    .bill-table td:nth-child(2)::before{content:"Qty"}
+    .bill-table td:nth-child(3)::before{content:"Price ₹"}
+    .bill-table td:nth-child(4)::before{content:"Disc %"}
+    .bill-table td:nth-child(5)::before{content:"Tax %"}
+    .bill-table td:nth-child(6)::before{content:"Amount"}
+    .bill-table td:nth-child(7)::before{content:"Action"}
+    .bill-qty .qty-btn{width:30px;min-width:30px}
+  }
+  .mic{width:112px;height:112px;border-radius:50%;background:#0f6b57;color:#fff;display:grid;place-items:center;transition:background .2s}
+  .mic[data-state=listening]{background:#c0392b;animation:pulse 1.4s infinite}
+  .mic[data-state=processing]{background:#b7791f}
+  .mic[data-state=error]{background:#6b7280}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(192,57,43,.45)}100%{box-shadow:0 0 0 24px rgba(192,57,43,0)}}
+  @media (prefers-reduced-motion:reduce){.mic{animation:none!important}}
+  .row{animation:fade .2s}@keyframes fade{from{opacity:0}to{opacity:1}}
+  #invoice-modal{display:none}#invoice-modal.open{display:flex}
+  @media print{body *{visibility:hidden}#invoice,#invoice *{visibility:visible}#invoice{position:absolute;left:0;top:0;width:100%}.no-print{display:none!important}}
+</style>
+</head>
+<body>
+<div class="max-w-6xl mx-auto p-3 md:p-6">
+  <header class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div><h1 class="text-2xl font-bold">Vocal Billing System</h1><p class="text-sm text-slate-600">Speak. Calculate. Bill.</p></div>
+    <div class="flex flex-wrap gap-2">
+      <select id="business-type" class="fld" style="width:auto" aria-label="Business type"></select>
+      <select id="language" class="fld" style="width:auto" aria-label="Speech language">
+        <option value="en-IN">English</option><option value="hi-IN">हिन्दी</option></select>
+      <button id="settings-btn" class="btn" aria-label="Settings">⚙ Settings</button>
+    </div>
+  </header>
+
+  <div id="notice" role="status" aria-live="polite" class="hidden mb-3 p-3 rounded-lg text-sm border"></div>
+
+  <main class="grid items-stretch lg:grid-cols-[minmax(0,25fr)_minmax(0,75fr)] gap-4">
+    <section id="voice-section" class="card p-4 space-y-3" aria-labelledby="v-h">
+      <h2 id="v-h" class="text-lg font-semibold">Speak your items</h2>
+      <p class="text-sm text-slate-600">Tell me what the customer bought. Example: <em id="example"></em></p>
+      <div class="flex flex-col items-center gap-2 py-2">
+        <button id="mic" class="mic" data-state="idle" aria-label="Start listening">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+        </button>
+        <p id="mic-status" class="font-medium">Ready. Tap the microphone.</p>
+        <p class="text-xs text-slate-500">Language: <span id="lang-label">English</span></p>
+      </div>
+      <label for="transcript" class="text-sm font-medium">Transcript (you can edit it)</label>
+      <textarea id="transcript" rows="4" class="fld py-2" placeholder="Your words appear here…"></textarea>
+      <div class="flex flex-wrap gap-2">
+        <button id="parse-btn" class="btn btn-primary">Add to bill</button>
+        <button id="stop-btn" class="btn" disabled>Stop</button>
+        <button id="clear-transcript" class="btn">Clear text</button>
+      </div>
+      <p id="parse-source" class="text-xs text-slate-500"></p>
+    </section>
+
+    <section id="bill-section" class="card p-4 space-y-3" aria-labelledby="b-h">
+      <h2 id="b-h" class="text-lg font-semibold">Current bill</h2>
+      <div class="bill-table-wrap">
+        <table class="bill-table">
+          <thead><tr><th id="h-item">Item</th><th>Qty</th><th>Price ₹</th><th>Disc %</th><th>Tax %</th><th>Amount</th><th>Action</th></tr></thead>
+          <tbody id="items"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="text-center text-slate-500 py-6">No items added yet. Tap the microphone and speak your items.</p>
+      <div class="flex flex-wrap justify-between gap-2">
+        <button id="add-item" class="btn">+ Add item</button>
+        <button id="clear-bill" class="btn btn-danger">Clear UI</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 items-end border-t pt-3">
+        <label class="text-sm">Bill discount
+          <div class="flex gap-1"><input id="bill-discount" type="number" min="0" step="any" value="0" class="fld">
+          <select id="bill-discount-type" class="fld" style="width:70px" aria-label="Discount type"><option value="percentage">%</option><option value="fixed">₹</option></select></div></label>
+        <label class="text-sm">Default tax %
+          <input id="default-tax" list="rates" type="number" min="0" step="any" value="0" class="fld"></label>
+        <datalist id="rates"><option value="0"><option value="5"><option value="12"><option value="18"><option value="28"></datalist>
+      </div>
+
+      <dl id="summary" class="border-t pt-3 space-y-1 text-sm" aria-live="polite"></dl>
+      <div class="flex flex-wrap gap-2">
+        <button id="generate" class="btn btn-primary flex-1">Generate bill</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="invoice-modal" class="fixed inset-0 bg-black/50 items-start justify-center overflow-auto p-3 z-50" role="dialog" aria-modal="true" aria-label="Invoice">
+  <div class="bg-white rounded-xl w-full max-w-xl my-4">
+    <div id="invoice" class="p-6"></div>
+    <div class="no-print flex flex-wrap gap-2 p-4 border-t">
+      <button id="print-btn" class="btn btn-primary">Print bill</button>
+      <button id="pdf-btn" class="btn">Download PDF</button>
+      <button id="close-modal" class="btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal" class="hidden fixed inset-0 bg-black/50 items-center justify-center p-3 z-50" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
+    <h2 class="font-semibold text-lg">Shop details (printed on bill)</h2>
+    <label class="text-sm block">Business name<input id="s-name" class="fld" value="My Store"></label>
+    <label class="text-sm block">Address (optional)<input id="s-addr" class="fld"></label>
+    <label class="text-sm block">GSTIN (optional)<input id="s-gstin" class="fld"></label>
+    <label class="text-sm block">Customer name (optional)<input id="s-cust" class="fld"></label>
+    <label class="text-sm block">Customer phone (optional)<input id="s-phone" class="fld"></label>
+    <label class="text-sm flex items-center gap-2"><input id="s-dark" type="checkbox"> Dark mode</label>
+    <p class="text-xs text-slate-500">Nothing is sent anywhere. AI parsing is set in the CONFIG object in script.js.</p>
+    <button id="s-close" class="btn btn-primary w-full">Done</button>
+  </div>
+</div>
+<script src="script.js"></script>
+<script src="voice-auto.js"></script>
+</body>
+</html>
